@@ -1,2 +1,2 @@
 # Mineria
-Restricted.
+All rights restricted.
