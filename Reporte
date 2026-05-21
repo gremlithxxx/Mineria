@@ -1,0 +1,751 @@
+# REPORTE TÉCNICO DEL PROYECTO DE MINERÍA DE DATOS
+
+## Análisis de Desapariciones: Evaluación Comparativa de Representaciones Predictivas
+
+---
+
+**Investigación realizada para:** [Nombre de la institución/curso]
+
+**Fecha:** [Fecha actual]
+
+**Objetivo del Proyecto:** Determinar qué factores (género, edad, zona, etc.) predicen mejor si una persona desaparecida será encontrada o no, respondiendo a la pregunta: **"¿Quién desaparece más, hombres o mujeres?"**
+
+---
+
+## ÍNDICE
+
+1. Introducción y Problema Real
+2. Carga y Exploración del Dataset
+3. Preparación y Preprocesamiento de Datos
+4. Construcción del Grafo de Similitud
+5. Extracción de Features Estructurales
+6. Creación de Datasets Comparativos
+7. Visualización Inicial de Datos
+8. Competencia entre Representaciones
+9. Optimización del Dataset Ganador
+10. Evaluación Final en Test
+11. Interpretabilidad del Modelo
+12. Análisis de Falsos Positivos
+13. Densidad Dual de Scores Predictivos
+14. Conclusiones Finales
+
+---
+
+## 1. INTRODUCCIÓN Y PROBLEMA REAL
+
+### 1.1 Contexto del Problema
+
+En América Latina, miles de personas desaparecen cada año. Las estadísticas oficiales muestran patrones diferenciados por género, edad y ubicación geográfica. Este fenómeno no solo representa una crisis humanitaria, sino también un desafío para las autoridades que deben asignar recursos limitados para la búsqueda y localización de personas.
+
+### 1.2 Descripción del Problema desde la Ciencia de Datos
+
+En la práctica real de ciencia de datos, uno de los errores más comunes consiste en asumir que el dataset tabular tradicional ya representa de forma óptima el problema. Sin embargo, muchas veces la información más importante no solo reside en los valores individuales de cada observación, sino también en cómo esas observaciones se relacionan entre sí.
+
+**Ejemplo aplicado a desapariciones:** Dos personas desaparecidas en condiciones similares (misma zona, mismo rango etario, mismas circunstancias) pueden compartir patrones que un análisis tabular convencional no captura fácilmente. Una persona que desaparece en una zona rural podría tener más similitud con otra en situación similar que con una en zona urbana, independientemente de sus atributos individuales.
+
+### 1.3 Objetivo del Proyecto
+
+Comparar formalmente tres formas distintas de representar exactamente el mismo problema de clasificación de desapariciones:
+
+| Dataset | Descripción | Aplicación a Desapariciones |
+|---------|-------------|----------------------------|
+| **Dataset A** | Variables tabulares tradicionales | Edad, género, zona, tiempo desaparecido, denuncio familiar |
+| **Dataset B** | Variables estructurales derivadas de un grafo de similitud | Conexiones entre casos similares, centralidad en la red de desapariciones |
+| **Dataset C** | Dataset combinado (tabular + grafo) | Información individual + contexto relacional |
+
+### 1.4 Pregunta Central del Proyecto
+
+> **"¿Qué representación de los datos captura mejor la realidad del fenómeno de desapariciones?"**
+
+### 1.5 Preguntas Específicas a Responder
+
+1. **¿Quién desaparece más, hombres o mujeres?**
+2. **¿Qué factores (edad, zona, tiempo, etc.) son predictores clave?**
+3. **¿La información estructural (grafo) mejora la predicción?**
+
+---
+
+## 2. CARGA Y EXPLORACIÓN DEL DATASET
+
+### 2.1 Descripción del Dataset
+
+Para este proyecto, se creó un dataset sintético que emula datos reales de desapariciones, con las siguientes características:
+
+| Característica | Valor |
+|----------------|-------|
+| Número de registros | 3,000 casos |
+| Número de variables | 7 variables (6 predictoras + 1 target) |
+| Período simulado | Desapariciones registradas |
+
+### 2.2 Variables del Dataset
+
+| Variable | Tipo | Descripción | Valores posibles |
+|----------|------|-------------|------------------|
+| `genero` | Categórica | Género de la persona desaparecida | Mujer, Hombre |
+| `edad` | Numérica | Edad en años | 1-90 años |
+| `zona` | Categórica | Zona geográfica de desaparición | Urbana, Rural, Suburbana |
+| `tiempo_desaparecido` | Numérica | Días transcurridos desde la desaparición | 1-365 días |
+| `denuncio_familiar` | Categórica | Si hubo denuncia por parte de la familia | Si, No |
+| `antecedentes` | Categórica | Si la persona tenía antecedentes | Si, No |
+| `target` | Binaria | Estado actual de la persona | 0 = Encontrado, 1 = No encontrado |
+
+**INSERTAR IMAGEN:** `dataset_desapariciones_head.png`
+*Captura de pantalla mostrando las primeras 10 filas del dataset*
+
+### 2.3 Distribución de la Variable Objetivo
+
+| Estado | Cantidad | Porcentaje |
+|--------|----------|------------|
+| Encontrados (0) | [valor] | [valor]% |
+| No encontrados (1) | [valor] | [valor]% |
+
+**INSERTAR IMAGEN:** `distribucion_target.png`
+*Gráfico de barras mostrando la distribución de casos encontrados vs no encontrados*
+
+---
+
+## 3. PREPARACIÓN Y PREPROCESAMIENTO DE DATOS
+
+### 3.1 Limpieza Inicial
+
+El dataset no presentaba valores nulos, por lo que no fue necesario realizar imputaciones. Se verificó la integridad de los datos y la consistencia de los tipos de variables.
+
+### 3.2 Detección de la Variable Objetivo
+
+La variable `target` fue identificada como la variable objetivo, con valores:
+- **0:** Persona encontrada (caso resuelto)
+- **1:** Persona no encontrada (sigue desaparecida)
+
+### 3.3 Boxplot Antes de Estandarización
+
+Los boxplots permiten visualizar la distribución original de las variables numéricas (`edad`, `tiempo_desaparecido`).
+
+**INSERTAR IMAGEN:** `01_boxplot_antes.png`
+*Diagramas de caja mostrando la distribución de edad y tiempo desaparecido antes de la estandarización. Se observan valores atípicos en tiempo_desaparecido.*
+
+### 3.4 Split del Dataset (Train/Validation/Test)
+
+Siguiendo la regla fundamental del proyecto, se dividieron los datos **ANTES** de cualquier transformación:
+
+| Conjunto | Proporción | Propósito | Número de casos |
+|----------|------------|-----------|-----------------|
+| **Train** | 70% | Entrenamiento del modelo | 2,100 casos |
+| **Validation** | 15% | Ajuste de hiperparámetros | 450 casos |
+| **Test** | 15% | Evaluación final | 450 casos |
+
+**Regla crítica aplicada:** 
+- Transformaciones (escalado, codificación) se ajustaron SOLO en Train
+- Validation y Test usaron parámetros aprendidos en Train
+
+### 3.5 Codificación de Variables Categóricas
+
+Las variables categóricas (`genero`, `zona`, `denuncio_familiar`, `antecedentes`) fueron transformadas a valores numéricos mediante **LabelEncoder**, entrenado con todos los valores posibles para evitar errores en validación/test.
+
+| Variable | Categorías codificadas |
+|----------|------------------------|
+| genero | 0 = Mujer, 1 = Hombre |
+| zona | 0 = Rural, 1 = Suburbana, 2 = Urbana |
+| denuncio_familiar | 0 = No, 1 = Si |
+| antecedentes | 0 = No, 1 = Si |
+
+### 3.6 Estandarización (Escalado)
+
+Se aplicó **StandardScaler** para transformar las variables numéricas:
+
+```python
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_val_scaled = scaler.transform(X_val)
+X_test_scaled = scaler.transform(X_test)
+```
+
+**Efecto del escalado:**
+- Media = 0
+- Desviación estándar = 1
+- Todas las variables en la misma escala
+
+**INSERTAR IMAGEN:** `02_boxplot_despues.png`
+*Diagramas de caja después de la estandarización, mostrando todas las variables en la misma escala (media 0, desviación 1)*
+
+### 3.7 Análisis de Balanceo de Clases
+
+| Conjunto | Proporción de "No encontrados" | ¿Balanceado? |
+|----------|-------------------------------|--------------|
+| Train | [valor] | [Sí/No] |
+| Validation | [valor] | [Sí/No] |
+| Test | [valor] | [Sí/No] |
+
+**Decisión metodológica:** [Si está desbalanceado, se usa class_weight='balanced'; si no, se procede sin balanceo]
+
+---
+
+## 4. CONSTRUCCIÓN DEL GRAFO DE SIMILITUD
+
+### 4.1 Concepto Aplicado a Desapariciones
+
+Las observaciones (casos de desaparición) dejan de verse únicamente como filas independientes y comienzan a interpretarse como entidades dentro de una red de similitud.
+
+**Idea central:** Casos de desaparición similares (misma zona, edad similar, circunstancias parecidas) pueden compartir propiedades predictivas relevantes sobre la probabilidad de ser encontrados.
+
+**INSERTAR IMAGEN:** `esquema_grafo_desapariciones.png`
+*Diagrama conceptual mostrando cómo se conectan casos similares de desaparición en un grafo*
+
+### 4.2 Submuestreo por Viabilidad Computacional
+
+Debido al costo computacional de construir grafos con muchas observaciones, se aplicó un submuestreo estratificado:
+
+```python
+max_grafo = 1500
+if len(X_train_scaled) > max_grafo:
+    indices_grafo = np.random.choice(len(X_train_scaled), max_grafo, replace=False)
+```
+
+**Justificación:** Un análisis sólido, justificable e interpretable es preferible a un pipeline inmanejable.
+
+### 4.3 Construcción del Grafo k-NN
+
+Se utilizó el algoritmo **k-Nearest Neighbors (k-NN)** con distancia euclidiana:
+
+| Parámetro | Valor | Justificación |
+|-----------|-------|---------------|
+| k | 10 vecinos | Suficiente para capturar similitudes, no excesivo para evitar ruido |
+| Métrica | Euclidiana | Adecuada para espacios continuos después de estandarización |
+
+**Resultado:** Un grafo no dirigido donde:
+- **Nodo** = Cada caso de desaparición
+- **Arista** = Conexión entre casos similares (k vecinos más cercanos)
+
+**INSERTAR IMAGEN:** `ejemplo_grafo_knn.png*
+*Ilustración de cómo se conectan los 3 vecinos más cercanos en un espacio bidimensional*
+
+---
+
+## 5. EXTRACCIÓN DE FEATURES ESTRUCTURALES
+
+### 5.1 Descripción
+
+Cada caso de desaparición se describe ahora por su **rol estructural** dentro de la red de similitud. Esto permite capturar información que el análisis tabular tradicional no ve.
+
+### 5.2 Métricas Extraídas
+
+| Métrica | Fórmula/Significado | Interpretación en Desapariciones |
+|---------|---------------------|----------------------------------|
+| **Degree** | Número de conexiones del nodo | Cantidad de casos similares a este caso. Un degree alto indica un caso "típico" o "común" |
+| **Clustering Coefficient** | Proporción de conexiones entre vecinos | Qué tan agrupados están los casos similares entre sí. Indica la formación de "comunidades" de desapariciones |
+
+### 5.3 Visualización de Features Estructurales
+
+**INSERTAR IMAGEN:** `features_estructurales_head.png`
+*Tabla mostrando las primeras filas de las features estructurales extraídas (degree y clustering)*
+
+### 5.4 Importancia de las Features Estructurales
+
+Estas métricas permiten responder preguntas como:
+- ¿Los casos de desaparición tienden a formar grupos por zona geográfica?
+- ¿Hay casos "puente" que conectan diferentes tipos de desapariciones?
+- ¿La estructura de la red aporta información adicional más allá de los atributos individuales?
+
+---
+
+## 6. CREACIÓN DE DATASETS COMPARATIVOS
+
+### 6.1 Los Tres Datasets
+
+En este punto, se generaron múltiples formas de representar exactamente el mismo fenómeno de desapariciones:
+
+```python
+Dataset_A = X_grafo                    # Solo variables tabulares
+Dataset_B = X_graph.values             # Solo variables estructurales  
+Dataset_C = np.hstack([X_grafo, X_graph.values])  # Combinado
+```
+
+**INSERTAR IMAGEN:** `esquema_datasets_comparativos.png`
+*Diagrama mostrando cómo se construyen los tres datasets a partir de los datos originales*
+
+### 6.2 Dimensiones de Cada Dataset
+
+| Dataset | Composición | Dimensiones | Información que contiene |
+|---------|-------------|-------------|--------------------------|
+| **A (Tabular)** | Variables originales | (n, 6) | Edad, género, zona, tiempo, denuncio, antecedentes |
+| **B (Grafo)** | Métricas estructurales | (n, 2) | Degree, clustering coefficient |
+| **C (Combinado)** | Tabular + Grafo | (n, 8) | Toda la información disponible |
+
+### 6.3 Generación de Features para Validation/Test
+
+Para evitar **data leakage**, las features estructurales de validation y test se generaron usando **solo** el grafo de entrenamiento como referencia:
+
+```python
+def get_graph_features_new(X_ref, X_new, k):
+    # Encuentra vecinos de X_new en el grafo de referencia
+    # Calcula features basadas en esa relación
+```
+
+**INSERTAR IMAGEN:** `esquema_features_validation.png`
+*Diagrama mostrando cómo se generan features estructurales para nuevos casos usando el grafo de entrenamiento*
+
+---
+
+## 7. VISUALIZACIÓN INICIAL
+
+### 7.1 PCA del Dataset Tabular
+
+El análisis de Componentes Principales (PCA) permite visualizar la separabilidad de las clases en un espacio bidimensional.
+
+**INSERTAR IMAGEN:** `03_pca.png`
+*Gráfico de PCA mostrando la proyección de los casos de desaparición. Puntos rojos = No encontrados, azules = Encontrados.*
+
+**Interpretación:**
+- [Observar si hay separación visible entre clases]
+- [Identificar clusters o grupos de casos similares]
+- [Detectar posibles outliers]
+
+### 7.2 Grafo Coloreado por Clase Real
+
+Esta visualización muestra cómo se distribuyen los casos encontrados vs no encontrados dentro de la estructura relacional.
+
+**INSERTAR IMAGEN:** `04_grafo_clases.png`
+*Red de similitud donde cada nodo está coloreado según su estado real (rojo = no encontrado, azul = encontrado)*
+
+**Preguntas que responde:**
+- ¿Los casos no encontrados tienden a agruparse?
+- ¿Hay regiones del grafo enriquecidas en un tipo de clase?
+- ¿Existen hubs (nodos muy conectados) de casos encontrados o no encontrados?
+
+### 7.3 Análisis de Centralidad del Grafo
+
+| Tipo de Centralidad | Pregunta que responde |
+|---------------------|----------------------|
+| **Degree** | ¿Hay casos de desaparición muy "típicos" (conectados a muchos otros)? |
+| **Clustering** | ¿Los casos similares tienden a formar grupos cerrados? |
+
+**INSERTAR IMAGEN:** `grafo_degree_desapariciones.png*
+*Grafo donde el tamaño/color del nodo representa su grado (número de conexiones)*
+
+---
+
+## 8. COMPETENCIA ENTRE REPRESENTACIONES
+
+### 8.1 Descripción de la Competencia
+
+Los tres datasets compiten bajo **exactamente las mismas condiciones**:
+- Mismo conjunto de Train
+- Mismo conjunto de Validation  
+- Mismo conjunto de Test
+
+### 8.2 Modelos Utilizados
+
+| Modelo | Características | Ventaja para desapariciones |
+|--------|----------------|----------------------------|
+| **Random Forest** | Ensemble de árboles, maneja interacciones | Captura combinaciones complejas de factores de riesgo |
+| **SVM** | Máquina de vectores de soporte | Buena para separar clases en espacios de alta dimensión |
+| **Red Neuronal** | MLP con capas ocultas | Captura relaciones no lineales entre factores |
+
+### 8.3 Métricas Evaluadas
+
+| Métrica | Fórmula | Significado en este proyecto |
+|---------|---------|------------------------------|
+| **ROC-AUC** | Área bajo la curva ROC | Capacidad de distinguir entre encontrados y no encontrados (métrica principal) |
+| **F1-Score** | Media armónica de precisión y recall | Balance entre no falsos positivos y no falsos negativos |
+| **Accuracy** | Aciertos / Total | Porcentaje global de casos bien clasificados |
+
+### 8.4 Resultados de la Competencia
+
+**INSERTAR IMAGEN:** `tabla_resultados_competencia_desapariciones.png`
+*Tabla comparativa de resultados para cada combinación Dataset-Modelo*
+
+| Modelo | Dataset Tabular | Dataset Grafo | Dataset Combinado |
+|--------|----------------|---------------|-------------------|
+| **Random Forest** | AUC: [X], F1: [Y] | AUC: [X], F1: [Y] | AUC: [X], F1: [Y] |
+| **SVM** | AUC: [X], F1: [Y] | AUC: [X], F1: [Y] | AUC: [X], F1: [Y] |
+| **Red Neuronal** | AUC: [X], F1: [Y] | AUC: [X], F1: [Y] | AUC: [X], F1: [Y] |
+
+### 8.5 Análisis de Resultados
+
+**Gráfico de barras comparativo:**
+
+**INSERTAR IMAGEN:** `grafico_ganador_desapariciones.png*
+*Gráfico de barras mostrando el AUC de cada combinación, destacando el ganador*
+
+**Conclusiones de la competencia:**
+1. El dataset **[Tabular / Grafo / Combinado]** obtuvo el mejor AUC: **[valor]**
+2. El modelo **[Random Forest / SVM / Red Neuronal]** fue el más efectivo
+3. La información estructural **[mejoró / no mejoró / empeoró]** la predicción respecto al análisis tabular puro
+
+---
+
+## 9. OPTIMIZACIÓN DEL DATASET GANADOR
+
+### 9.1 Descripción
+
+Una vez seleccionada la representación más prometedora ([Dataset Ganador]), toda la atención se concentra en perfeccionar el mejor pipeline posible.
+
+> **Filosofía aplicada:** "Primero decidiste qué información usar. Ahora debes descubrir cómo explotarla mejor."
+
+### 9.2 GridSearchCV
+
+Se realizó una búsqueda sistemática de hiperparámetros con validación cruzada (3 folds):
+
+```python
+param_grid = {
+    'n_estimators': [50, 100, 200],
+    'max_depth': [10, 20, None],
+    'min_samples_split': [2, 5, 10]
+}
+grid = GridSearchCV(rf, param_grid, cv=3, scoring='roc_auc')
+```
+
+**INSERTAR IMAGEN:** `resultados_gridsearch_desapariciones.png*
+*Tabla mostrando los resultados del GridSearchCV con diferentes combinaciones de parámetros*
+
+### 9.3 Mejores Hiperparámetros Encontrados
+
+| Parámetro | Valor óptimo | Impacto en la predicción |
+|-----------|--------------|--------------------------|
+| n_estimators | [valor] | [explicación] |
+| max_depth | [valor] | [explicación] |
+| min_samples_split | [valor] | [explicación] |
+
+**Mejor AUC en validación cruzada:** [valor]
+
+---
+
+## 10. EVALUACIÓN FINAL EN TEST
+
+### 10.1 Descripción
+
+> **El momento de la verdad:** El conjunto de Test, que nunca ha sido utilizado durante el entrenamiento ni la optimización, responde a la pregunta: **"¿Generaliza realmente el modelo?"**
+
+### 10.2 Métricas Obtenidas en Test
+
+**INSERTAR IMAGEN:** `tabla_metricas_test_desapariciones.png*
+*Tabla con los valores de todas las métricas obtenidas en el conjunto de Test*
+
+| Métrica | Valor | Interpretación |
+|---------|-------|----------------|
+| **Accuracy** | [valor] | [X]% de casos clasificados correctamente |
+| **Precision** | [valor] | Cuando el modelo predice "no encontrado", acierta el [Y]% de las veces |
+| **Recall** | [valor] | El modelo detecta el [Z]% de los casos reales de no encontrados |
+| **F1-Score** | [valor] | Balance entre precisión y recall |
+| **ROC-AUC** | [valor] | Capacidad de discriminación del modelo |
+
+### 10.3 Matriz de Confusión
+
+**INSERTAR IMAGEN:** `05_matriz_confusion.png*
+*Heatmap de la matriz de confusión mostrando VP, VN, FP, FN*
+
+| | Predicho: Encontrado | Predicho: No encontrado |
+|--|---------------------|------------------------|
+| **Real: Encontrado** | Verdaderos Negativos (VN) | Falsos Positivos (FP) |
+| **Real: No encontrado** | Falsos Negativos (FN) | Verdaderos Positivos (VP) |
+
+**Análisis de errores:**
+- **Falsos Positivos:** [X] casos predichos como "no encontrados" que realmente sí fueron encontrados
+- **Falsos Negativos:** [Y] casos predichos como "encontrados" que realmente NO fueron encontrados
+
+### 10.4 Curva ROC
+
+**INSERTAR IMAGEN:** `06_curva_roc.png*
+*Curva ROC mostrando el trade-off entre sensibilidad (TPR) y especificidad (FPR)*
+
+**Interpretación:**
+- AUC = [valor] indica una capacidad [excelente/buena/regular/mala] de discriminación
+- La curva se aleja significativamente de la línea diagonal (clasificador aleatorio)
+
+---
+
+## 11. INTERPRETABILIDAD DEL MODELO
+
+### 11.1 Top Factores Más Importantes
+
+El análisis de importancia de variables revela qué factores son más predictivos para determinar si una persona desaparecida será encontrada.
+
+**INSERTAR IMAGEN:** `07_top_factores.png*
+*Gráfico de barras horizontales mostrando los 3 factores más importantes*
+
+**Top 3 Factores de Riesgo:**
+
+| Posición | Variable | Importancia | Interpretación |
+|----------|----------|-------------|----------------|
+| 1 | **[Variable]** | [valor] | [Explicación de por qué es importante] |
+| 2 | **[Variable]** | [valor] | [Explicación de por qué es importante] |
+| 3 | **[Variable]** | [valor] | [Explicación de por qué es importante] |
+
+### 11.2 Análisis Estadístico de Variables Clave
+
+Para validar la relevancia de las top variables, se aplicó la prueba **Mann-Whitney U**, que compara la distribución de la variable entre casos encontrados y no encontrados.
+
+**INSERTAR IMAGEN:** `boxplot_variable_clave_desapariciones.png*
+*Boxplot comparativo de la variable más importante entre casos encontrados vs no encontrados*
+
+| Variable | Media (Encontrados) | Media (No encontrados) | p-value | Diferencia significativa |
+|----------|---------------------|------------------------|---------|--------------------------|
+| [Var1] | [valor] | [valor] | [valor] | [Sí/No] |
+| [Var2] | [valor] | [valor] | [valor] | [Sí/No] |
+| [Var3] | [valor] | [valor] | [valor] | [Sí/No] |
+
+**Interpretación del p-value:**
+- **p-value < 0.05:** La diferencia es estadísticamente significativa (la variable realmente discrimina)
+- **p-value ≥ 0.05:** No hay evidencia suficiente de diferencia
+
+---
+
+## 12. ANÁLISIS DE FALSOS POSITIVOS
+
+### 12.1 Descripción
+
+Los **falsos positivos** (casos reales de "encontrados" que el modelo predijo como "no encontrados") son particularmente importantes porque representan casos que el modelo considera de alto riesgo pero que tuvieron un desenlace favorable.
+
+**Pregunta clave:** ¿Estos casos podrían esconder hallazgos importantes sobre factores protectores?
+
+### 12.2 Top 5 Falsos Positivos
+
+**INSERTAR IMAGEN:** `tabla_falsos_positivos_desapariciones.png*
+*Tabla mostrando los 5 falsos positivos con sus características*
+
+| # | Características del caso | Score de riesgo | Posible explicación |
+|---|--------------------------|-----------------|---------------------|
+| 1 | [descripción] | [valor] | [hipótesis] |
+| 2 | [descripción] | [valor] | [hipótesis] |
+| 3 | [descripción] | [valor] | [hipótesis] |
+| 4 | [descripción] | [valor] | [hipótesis] |
+| 5 | [descripción] | [valor] | [hipótesis] |
+
+### 12.3 Preguntas para Investigación Futura
+
+Para cada falso positivo, se deben responder:
+
+1. **¿Tiene alta centralidad en el grafo?** (¿Es un caso "típico"?)
+2. **¿Se parece demasiado a los casos no encontrados?** (¿Comparte características de riesgo?)
+3. **¿Podría representar un hallazgo oculto?** (¿Hay un factor protector no capturado en los datos?)
+
+---
+
+## 13. DENSIDAD DUAL DE SCORES PREDICTIVOS
+
+### 13.1 Descripción
+
+Esta visualización muestra cómo distribuye el modelo sus puntuaciones de probabilidad sobre las clases reales. Permite evaluar la **capacidad real de discriminación** del modelo más allá de métricas agregadas.
+
+**INSERTAR IMAGEN:** `08_densidad_scores.png*
+*Gráfico de densidad con dos curvas: una para casos realmente encontrados y otra para realmente no encontrados*
+
+### 13.2 Interpretación de la Gráfica
+
+| Elemento | Significado |
+|----------|-------------|
+| Curva azul/verde | Distribución de probabilidades para casos REALMENTE encontrados |
+| Curva roja | Distribución de probabilidades para casos REALMENTE no encontrados |
+| Línea vertical roja (0.5) | Umbral de decisión estándar del modelo |
+| Área de superposición | Casos donde el modelo tiene ambigüedad |
+
+### 13.3 Métricas de Separación
+
+| Métrica | Valor | Interpretación |
+|---------|-------|----------------|
+| Probabilidad media (NO encontrados reales) | [valor] | En promedio, el modelo asigna [X]% de probabilidad a los casos que realmente no aparecen |
+| Probabilidad media (Encontrados reales) | [valor] | En promedio, el modelo asigna [Y]% de probabilidad a los casos que realmente aparecen |
+| Negativos > 0.5 | [Z]% | Porcentaje de casos encontrados que el modelo considera de alto riesgo |
+| Positivos < 0.5 | [W]% | Porcentaje de casos no encontrados que el modelo considera de bajo riesgo |
+
+### 13.4 Conclusión del Análisis de Separación
+
+**INSERTAR IMAGEN:** `analisis_superposicion_desapariciones.png*
+*Gráfico mostrando el porcentaje de superposición entre las distribuciones*
+
+Basado en el análisis:
+
+| Superposición | Conclusión |
+|---------------|------------|
+| **> 20%** | El modelo vive en zonas grises. Hay alta ambigüedad entre casos encontrados y no encontrados |
+| **5% - 20%** | Separación moderada. El modelo distingue razonablemente bien, pero hay margen de mejora |
+| **< 5%** | El modelo distingue excelentemente entre casos encontrados y no encontrados |
+
+**Conclusión para este proyecto:** [Texto según los resultados obtenidos]
+
+---
+
+## 14. CONCLUSIONES FINALES
+
+### 14.1 Respuesta a la Pregunta Central del Proyecto
+
+> **"¿Qué representación de los datos captura mejor la realidad del fenómeno de desapariciones?"**
+
+**RESPUESTA:** El dataset **[Tabular / Grafo / Combinado]** obtuvo el mejor desempeño con un **AUC de [valor] en test**.
+
+**Implicación:** [Explicar qué significa este resultado para el análisis de desapariciones]
+
+### 14.2 Respuesta a la Pregunta "¿Quién desaparece más?"
+
+**INSERTAR IMAGEN:** `00_analisis_genero.png*
+*Gráfico de barras mostrando la respuesta final*
+
+| Género | Número de desapariciones | Porcentaje |
+|--------|-------------------------|------------|
+| **[Género 1]** | [valor] | [valor]% |
+| **[Género 2]** | [valor] | [valor]% |
+
+**CONCLUSIÓN:** **[Género]** es el género que más desaparece, con **[valor]** casos ([valor]% del total).
+
+### 14.3 Factores de Riesgo Identificados
+
+**INSERTAR IMAGEN:** `factores_riesgo_resumen.png*
+*Infografía resumiendo los principales factores de riesgo*
+
+| Factor | Impacto en la predicción |
+|--------|--------------------------|
+| **[Factor 1]** | [Descripción del impacto] |
+| **[Factor 2]** | [Descripción del impacto] |
+| **[Factor 3]** | [Descripción del impacto] |
+
+### 14.4 Resumen Ejecutivo de Resultados
+
+**INSERTAR IMAGEN:** `resumen_ejecutivo_desapariciones.png*
+*Infografía resumiendo los principales hallazgos del proyecto*
+
+| Aspecto | Resultado |
+|---------|-----------|
+| Mejor Dataset | [Nombre del ganador] |
+| Mejor Modelo | [Nombre del modelo ganador] |
+| AUC en Test | [valor] |
+| F1-Score en Test | [valor] |
+| Factor más importante | [Variable] |
+| Género que más desaparece | [Género] |
+| Superposición entre clases | [porcentaje]% |
+
+### 14.5 Recomendaciones para Políticas Públicas
+
+Basado en los hallazgos del modelo:
+
+1. **Recursos de búsqueda:** Priorizar [recomendación basada en factores clave]
+2. **Prevención:** Enfocar campañas en [recomendación basada en género/zona]
+3. **Seguimiento:** Casos con [características de alto riesgo] requieren atención prioritaria
+
+### 14.6 Limitaciones del Estudio
+
+1. **Datos sintéticos:** El análisis se basa en datos simulados, no en casos reales
+2. **Variables limitadas:** No se incluyeron factores como situación económica, violencia, etc.
+3. **Temporalidad:** El tiempo de desaparición es una variable dinámica no completamente capturada
+
+### 14.7 Trabajo Futuro
+
+1. **Validación con datos reales:** Aplicar la metodología a datasets oficiales de desapariciones
+2. **Variables adicionales:** Incorporar factores socioeconómicos y geográficos
+3. **Análisis temporal:** Modelar la evolución de la probabilidad de encontrar a una persona a lo largo del tiempo
+
+---
+
+## GLOSARIO DE TÉRMINOS
+
+| Término | Definición |
+|---------|------------|
+| **AUC** | Área bajo la curva ROC. Mide la capacidad de discriminación del modelo. 0.5 = azar, 1.0 = perfecto |
+| **Data Leakage** | Filtración de información del futuro/validación al entrenamiento. Invalida la evaluación |
+| **F1-Score** | Media armónica entre precisión y recall. Balance entre falsos positivos y falsos negativos |
+| **Grafo** | Estructura de nodos (casos) y aristas (conexiones entre casos similares) |
+| **k-NN** | Algoritmo de vecinos más cercanos. Encuentra los k casos más similares |
+| **Overfitting** | Sobreajuste. El modelo aprende ruido en lugar de patrones reales |
+| **PCA** | Análisis de Componentes Principales. Reduce dimensionalidad para visualización |
+| **Recall** | Sensibilidad. Capacidad de detectar casos positivos (no encontrados) |
+| **ROC Curve** | Curva que muestra el trade-off entre sensibilidad y especificidad |
+
+---
+
+## ANEXOS
+
+### A. Configuración del Entorno de Ejecución
+
+```bash
+# Librerías necesarias
+pip install pandas numpy matplotlib seaborn scikit-learn networkx
+```
+
+**INSERTAR IMAGEN:** `logo_python_librerias.png*
+*Logos de las librerías utilizadas*
+
+### B. Estructura de Archivos Generados
+
+| Archivo | Descripción | Ubicación en el reporte |
+|---------|-------------|--------------------------|
+| `00_analisis_genero.png` | Barras de desapariciones por género | Sección 2, 14 |
+| `01_boxplot_antes.png` | Boxplot antes de estandarización | Sección 3 |
+| `02_boxplot_despues.png` | Boxplot después de estandarización | Sección 3 |
+| `03_pca.png` | PCA de casos de desaparición | Sección 7 |
+| `04_grafo_clases.png` | Grafo coloreado por estado | Sección 7 |
+| `05_matriz_confusion.png` | Matriz de confusión | Sección 10 |
+| `06_curva_roc.png` | Curva ROC | Sección 10 |
+| `07_top_factores.png` | Factores más importantes | Sección 11 |
+| `08_densidad_scores.png` | Densidad de probabilidades | Sección 13 |
+
+### C. Metodología Aplicada Paso a Paso
+
+**INSERTAR IMAGEN:** `flujo_metodologico_desapariciones.png*
+*Diagrama de flujo de la metodología completa del proyecto*
+
+1. Cargar datos de desapariciones
+2. Dividir en Train/Validation/Test (70/15/15)
+3. Estandarizar usando parámetros de Train
+4. Construir grafo de similitud (k-NN)
+5. Extraer features estructurales
+6. Crear 3 datasets comparativos
+7. Visualizar (PCA, grafo, centralidades)
+8. Competencia (RF, SVM, Red Neuronal)
+9. Optimizar el dataset ganador
+10. Evaluar en Test (una sola vez)
+
+### D. Código Fuente Completo
+
+El código completo del proyecto está disponible para su revisión y reproducción. Incluye:
+
+- Creación del dataset sintético de desapariciones
+- Implementación de todas las etapas metodológicas
+- Generación automática de todas las visualizaciones
+
+---
+
+## REFERENCIAS
+
+1. Documento original del proyecto: "Evaluación comparativa de la relevancia predictiva de datasets tabulares, estructurales de grafo y combinados"
+
+2. Scikit-learn: Machine Learning en Python. https://scikit-learn.org/
+
+3. NetworkX: Análisis de redes complejas. https://networkx.org/
+
+4. [Referencias sobre desapariciones en América Latina - agregar según corresponda]
+
+---
+
+**INSERTAR IMAGEN:** `portada_proyecto_desapariciones.png*
+*Portada del proyecto con título y fecha*
+
+---
+
+## FIRMA Y VALIDACIÓN
+
+| ROL | NOMBRE | FIRMA | FECHA |
+|-----|--------|-------|-------|
+| **Investigador Principal** | [Nombre] | [Firma] | [Fecha] |
+| **Revisor Metodológico** | [Nombre] | [Firma] | [Fecha] |
+| **Aprobador** | [Nombre] | [Firma] | [Fecha] |
+
+---
+
+**INSERTAR IMAGEN:** `codigo_qr_reporte.png*
+*Código QR que redirige al repositorio del código fuente*
+
+---
+
+## RESUMEN EJECUTIVO (UNA PÁGINA)
+
+| Pregunta | Respuesta |
+|----------|-----------|
+| **¿Quién desaparece más?** | **[Género]** con **[X]%** de los casos |
+| **¿Qué representación funciona mejor?** | **[Tabular / Grafo / Combinado]** |
+| **¿Cuál es la precisión del modelo?** | **AUC = [valor]** en test |
+| **Factor más importante** | **[Variable]** |
+| **¿El modelo discrimina bien?** | **[Sí / No / Moderadamente]** |
+
+---
+
+**FIN DEL REPORTE**
+
+---
